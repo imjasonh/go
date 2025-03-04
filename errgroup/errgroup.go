@@ -11,6 +11,7 @@ package errgroup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -31,6 +32,10 @@ type Group struct {
 
 	errOnce sync.Once
 	err     error
+
+	mu        sync.Mutex
+	collect   bool
+	collected []error
 }
 
 func (g *Group) done() {
@@ -57,6 +62,9 @@ func (g *Group) Wait() error {
 	if g.cancel != nil {
 		g.cancel(g.err)
 	}
+	if g.collect {
+		return errors.Join(g.collected...)
+	}
 	return g.err
 }
 
@@ -76,12 +84,18 @@ func (g *Group) Go(f func() error) {
 		defer g.done()
 
 		if err := f(); err != nil {
-			g.errOnce.Do(func() {
-				g.err = err
-				if g.cancel != nil {
-					g.cancel(g.err)
-				}
-			})
+			if g.collect {
+				g.mu.Lock()
+				g.collected = append(g.collected, err)
+				g.mu.Unlock()
+			} else {
+				g.errOnce.Do(func() {
+					g.err = err
+					if g.cancel != nil {
+						g.cancel(g.err)
+					}
+				})
+			}
 		}
 	}()
 }
@@ -133,4 +147,9 @@ func (g *Group) SetLimit(n int) {
 		panic(fmt.Errorf("errgroup: modify limit while %v goroutines in the group are still active", len(g.sem)))
 	}
 	g.sem = make(chan token, n)
+}
+
+// TODO
+func (g *Group) SetCollect(collect bool) {
+	g.collect = collect
 }

@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -259,4 +261,30 @@ func BenchmarkGo(b *testing.B) {
 		g.Go(func() error { fn(); return nil })
 	}
 	g.Wait()
+}
+
+func TestCollect(t *testing.T) {
+	g := &errgroup.Group{}
+	g.SetCollect(true)
+	for i := 0; i < 10; i++ {
+		g.Go(func() error { return fmt.Errorf("error %d", i) })
+	}
+	err := g.Wait()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if werr, ok := err.(interface{ Unwrap() []error }); !ok {
+		t.Fatalf("expected Unwrap, got %T", err)
+	} else {
+		errs := werr.Unwrap()
+		if len(errs) != 10 {
+			t.Fatalf("expected 10 errors, got %d", len(errs))
+		}
+		slices.SortFunc(errs, func(i, j error) int { return strings.Compare(i.Error(), j.Error()) })
+		for i, err := range errs {
+			if got, want := err.Error(), fmt.Sprintf("error %d", i); got != want {
+				t.Fatalf("expected %q, got %q", want, got)
+			}
+		}
+	}
 }
