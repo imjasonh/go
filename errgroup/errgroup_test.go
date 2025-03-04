@@ -266,19 +266,19 @@ func BenchmarkGo(b *testing.B) {
 func TestCollect(t *testing.T) {
 	g := &errgroup.Group{}
 	g.SetCollect(true)
-	for i := 0; i < 10; i++ {
+	n := 10
+	for i := range n {
 		g.Go(func() error { return fmt.Errorf("error %d", i) })
 	}
-	err := g.Wait()
-	if err == nil {
+
+	if err := g.Wait(); err == nil {
 		t.Fatalf("expected error, got nil")
-	}
-	if werr, ok := err.(interface{ Unwrap() []error }); !ok {
+	} else if werr, ok := err.(interface{ Unwrap() []error }); !ok {
 		t.Fatalf("expected Unwrap, got %T", err)
 	} else {
 		errs := werr.Unwrap()
-		if len(errs) != 10 {
-			t.Fatalf("expected 10 errors, got %d", len(errs))
+		if len(errs) != n {
+			t.Fatalf("expected %d errors, got %d", n, len(errs))
 		}
 		slices.SortFunc(errs, func(i, j error) int { return strings.Compare(i.Error(), j.Error()) })
 		for i, err := range errs {
